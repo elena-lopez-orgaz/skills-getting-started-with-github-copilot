@@ -4,6 +4,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
 
+  // Helper: obtiene iniciales desde un nombre o email
+  function getInitials(text) {
+    if (!text) return "?";
+    const parts = text.replace(/[@].*$/, "").split(/[.\s_-]+/).filter(Boolean);
+    if (parts.length === 0) return text.slice(0, 1).toUpperCase();
+    if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
+    return (parts[0].slice(0, 1) + parts[parts.length - 1].slice(0, 1)).toUpperCase();
+  }
+
   // Function to fetch activities from API
   async function fetchActivities() {
     try {
@@ -20,13 +29,99 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const spotsLeft = details.max_participants - details.participants.length;
 
+        // Basic card content; participants list will be appended below
         activityCard.innerHTML = `
           <h4>${name}</h4>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
-          <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          <p class="availability"><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          <div class="participants" aria-live="polite">
+            <h5>Participants</h5>
+            <div class="participants-list-container"></div>
+          </div>
         `;
 
+        // Build participants list (ul > li) using DOM to avoid HTML injection
+        const listContainer = activityCard.querySelector(".participants-list-container");
+        const ul = document.createElement("ul");
+        ul.className = "participants-list";
+
+        if (Array.isArray(details.participants) && details.participants.length > 0) {
+          details.participants.forEach((p) => {
+            const li = document.createElement("li");
+            li.className = "participant-item";
+
+            const avatar = document.createElement("span");
+            avatar.className = "avatar";
+            avatar.textContent = getInitials(p);
+
+            const nameSpan = document.createElement("span");
+            nameSpan.textContent = p; // p may be email or name; use textContent
+
+            const meta = document.createElement("span");
+            meta.className = "participant-meta";
+            meta.appendChild(nameSpan);
+
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className = "delete-btn";
+            deleteBtn.innerHTML = "✖";
+            deleteBtn.setAttribute("aria-label", `Unregister ${p} from ${name}`);
+
+            // Delete handler
+            deleteBtn.addEventListener("click", async () => {
+              const ok = confirm(`Unregister ${p} from ${name}?`);
+              if (!ok) return;
+
+              try {
+                const resp = await fetch(
+                  `/activities/${encodeURIComponent(name)}/participants?email=${encodeURIComponent(p)}`,
+                  { method: "DELETE" }
+                );
+
+                if (resp.ok) {
+                  // Remove the list item from DOM
+                  li.remove();
+
+                  // If list is empty now, show placeholder
+                  if (ul.querySelectorAll("li").length === 0) {
+                    const emptyLi = document.createElement("li");
+                    emptyLi.className = "participant-item";
+                    emptyLi.textContent = "No participants yet";
+                    ul.appendChild(emptyLi);
+                  }
+
+                  // Update availability number in the card
+                  const availabilityP = activityCard.querySelector('.availability');
+                  if (availabilityP) {
+                    const match = availabilityP.textContent.match(/(\d+)/);
+                    const current = match ? parseInt(match[0], 10) : 0;
+                    const newVal = current + 1;
+                    availabilityP.innerHTML = `<strong>Availability:</strong> ${newVal} spots left`;
+                  }
+                } else {
+                  const error = await resp.json();
+                  console.error("Failed to unregister:", error);
+                  alert(error.detail || "Failed to unregister participant");
+                }
+              } catch (err) {
+                console.error(err);
+                alert("Failed to unregister. Please try again.");
+              }
+            });
+
+            li.appendChild(avatar);
+            li.appendChild(meta);
+            li.appendChild(deleteBtn);
+            ul.appendChild(li);
+          });
+        } else {
+          const li = document.createElement("li");
+          li.className = "participant-item";
+          li.textContent = "No participants yet";
+          ul.appendChild(li);
+        }
+
+        listContainer.appendChild(ul);
         activitiesList.appendChild(activityCard);
 
         // Add option to select dropdown
