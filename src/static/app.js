@@ -34,7 +34,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <h4>${name}</h4>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
-          <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          <p class="availability"><strong>Availability:</strong> ${spotsLeft} spots left</p>
           <div class="participants" aria-live="polite">
             <h5>Participants</h5>
             <div class="participants-list-container"></div>
@@ -58,8 +58,60 @@ document.addEventListener("DOMContentLoaded", () => {
             const nameSpan = document.createElement("span");
             nameSpan.textContent = p; // p may be email or name; use textContent
 
+            const meta = document.createElement("span");
+            meta.className = "participant-meta";
+            meta.appendChild(nameSpan);
+
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className = "delete-btn";
+            deleteBtn.innerHTML = "✖";
+            deleteBtn.setAttribute("aria-label", `Unregister ${p} from ${name}`);
+
+            // Delete handler
+            deleteBtn.addEventListener("click", async () => {
+              const ok = confirm(`Unregister ${p} from ${name}?`);
+              if (!ok) return;
+
+              try {
+                const resp = await fetch(
+                  `/activities/${encodeURIComponent(name)}/participants?email=${encodeURIComponent(p)}`,
+                  { method: "DELETE" }
+                );
+
+                if (resp.ok) {
+                  // Remove the list item from DOM
+                  li.remove();
+
+                  // If list is empty now, show placeholder
+                  if (ul.querySelectorAll("li").length === 0) {
+                    const emptyLi = document.createElement("li");
+                    emptyLi.className = "participant-item";
+                    emptyLi.textContent = "No participants yet";
+                    ul.appendChild(emptyLi);
+                  }
+
+                  // Update availability number in the card
+                  const availabilityP = activityCard.querySelector('.availability');
+                  if (availabilityP) {
+                    const match = availabilityP.textContent.match(/(\d+)/);
+                    const current = match ? parseInt(match[0], 10) : 0;
+                    const newVal = current + 1;
+                    availabilityP.innerHTML = `<strong>Availability:</strong> ${newVal} spots left`;
+                  }
+                } else {
+                  const error = await resp.json();
+                  console.error("Failed to unregister:", error);
+                  alert(error.detail || "Failed to unregister participant");
+                }
+              } catch (err) {
+                console.error(err);
+                alert("Failed to unregister. Please try again.");
+              }
+            });
+
             li.appendChild(avatar);
-            li.appendChild(nameSpan);
+            li.appendChild(meta);
+            li.appendChild(deleteBtn);
             ul.appendChild(li);
           });
         } else {
